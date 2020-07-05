@@ -1,0 +1,4 @@
+include ':method_trace_plugin'
+include ':app_java'
+include ':app'
+rootProject.name = "SystracePlugin"
