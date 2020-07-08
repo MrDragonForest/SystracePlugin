@@ -8,6 +8,7 @@ import com.android.build.gradle.internal.pipeline.TransformManager
 import com.dragon.systrace.plugin.asm.AsmUtil
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.IOUtils
+import org.apache.http.util.TextUtils
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -74,6 +75,7 @@ class MethodTraceTransform : Transform() {
         //是否是增量编译
         val incremental = transformInvocation?.isIncremental
 
+        AsmUtil.clearRecords()
         /*
             进行读取class和jar, 并做处理
          */
@@ -91,8 +93,6 @@ class MethodTraceTransform : Transform() {
                 )
                 // 执行转化整个目录
                 transformDir(directoryInput.file, dstFile)
-                println("transform---class目录:--->>:" + directoryInput.file.absolutePath)
-                System.out.println("transform---dst目录:--->>:" + dstFile.getAbsolutePath())
             }
             // 处理jar
             val jarInputs = input.jarInputs
@@ -105,7 +105,6 @@ class MethodTraceTransform : Transform() {
                     Format.JAR
                 )
                 transformJar(jarInput.file, dstFile)
-                println("transform---jar目录:--->>:$jarPath")
             }
         }
     }
@@ -123,16 +122,13 @@ class MethodTraceTransform : Transform() {
         val dstDirPath = dstDir.absolutePath
         val files = inputDir.listFiles()
         for (file in files) {
-            println("transformDir-->" + file.absolutePath)
             var dstFilePath = file.absolutePath
             dstFilePath = dstFilePath.replace(inputDirPath, dstDirPath)
             val dstFile = File(dstFilePath)
             if (file.isDirectory) {
-                println("isDirectory-->" + file.absolutePath)
                 // 递归
                 transformDir(file, dstFile)
             } else if (file.isFile) {
-                println("isFile-->" + file.absolutePath)
                 // 转化单个class文件
                 transformSingleFile(file, dstFile)
             }
@@ -146,41 +142,51 @@ class MethodTraceTransform : Transform() {
      * @param dstFile
      */
     private fun transformJar(inputJarFile: File, dstFile: File): Unit {
+        //未配置额外插桩包直接拷贝jar包，减少编译时间
+        if (AsmUtil.extraPackages.size == 0) {
+            FileUtils.copyFile(inputJarFile, dstFile)
+            return
+        }
         try {
-            FileUtils.copyFile(inputJarFile, dstFile);
-//            val jarFile = JarFile(inputJarFile)
-//            val tempJarFile =
-//                File(inputJarFile.parent + File.separator + "classes_tmp.jar")
-//            if (tempJarFile.exists()) {
-//                FileUtils.forceDelete(tempJarFile)
-//            }
-//            val jarOutputStream = JarOutputStream(FileOutputStream(tempJarFile))
-//            val jarEntries: Enumeration<JarEntry> = jarFile.entries()
-//            // 遍历jar包中的.class文件
-//            while (jarEntries.hasMoreElements()) {
-//                val jarEntry: JarEntry = jarEntries.nextElement()
-//                val jarEntryName: String = jarEntry.getName()
-//                println("ActivityTransform --- jarEntry-->$jarEntryName")
-//                val zipEntry = ZipEntry(jarEntryName)
-//                val jarEntryInputStream: InputStream = jarFile.getInputStream(jarEntry)
-////                if (jarEntryName == "android/support/v4/app/FragmentActivity.class" || jarEntryName == "androidx/fragment/app/FragmentActivity.class") {
-//                if (jarEntryName.endsWith("/FragmentActivity.class")) {
-//                    // 进行插桩
-//                    // 修改原有class 重新写入
-//                    println("find--->FragmentActivity, modifying...")
-//                    jarOutputStream.putNextEntry(zipEntry)
-//                    jarOutputStream.write(AsmUtil.getClassByte(jarEntryInputStream,"FragmentActivity"))
-//                } else {
-//                    // 不进行操作 原封写入
-//                    jarOutputStream.putNextEntry(zipEntry)
-//                    jarOutputStream.write(IOUtils.toByteArray(jarEntryInputStream))
-//                }
-//                jarOutputStream.closeEntry()
-//            }
-//            jarOutputStream.close()
-//            jarFile.close()
-//            FileUtils.copyFile(tempJarFile, dstFile)
-//            FileUtils.forceDelete(tempJarFile)
+            val jarFile = JarFile(inputJarFile)
+            val tempJarFile =
+                File(inputJarFile.parent + File.separator + "classes_tmp.jar")
+            if (tempJarFile.exists()) {
+                FileUtils.forceDelete(tempJarFile)
+            }
+            val jarOutputStream = JarOutputStream(FileOutputStream(tempJarFile))
+            val jarEntries: Enumeration<JarEntry> = jarFile.entries()
+            // 遍历jar包中的.class文件
+            while (jarEntries.hasMoreElements()) {
+                val jarEntry: JarEntry = jarEntries.nextElement()
+                val jarEntryName: String = jarEntry.getName()
+                val zipEntry = ZipEntry(jarEntryName)
+                val jarEntryInputStream: InputStream = jarFile.getInputStream(jarEntry)
+                println("jarEntryName->$jarEntryName")
+                if (checkJarEntry(jarEntryName)) {
+                    println("checkJarEntry hit->$jarEntryName")
+                    var clsName = jarEntry2ClassName(jarEntryName)
+                    println("className ->$clsName")
+                    // 进行插桩
+                    // 修改原有class 重新写入
+                    jarOutputStream.putNextEntry(zipEntry)
+                    jarOutputStream.write(
+                        AsmUtil.getClassByte(
+                            jarEntryInputStream,
+                            clsName
+                        )
+                    )
+                } else {
+                    // 不进行操作 原封写入
+                    jarOutputStream.putNextEntry(zipEntry)
+                    jarOutputStream.write(IOUtils.toByteArray(jarEntryInputStream))
+                }
+                jarOutputStream.closeEntry()
+            }
+            jarOutputStream.close()
+            jarFile.close()
+            FileUtils.copyFile(tempJarFile, dstFile)
+            FileUtils.forceDelete(tempJarFile)
         } catch (e: IOException) {
             e.printStackTrace()
         }
@@ -198,9 +204,13 @@ class MethodTraceTransform : Transform() {
         inputFile: File,
         dstFile: File
     ) {
-        println("transformSingleFile-->" + ",name= ${inputFile.name}" + inputFile.absolutePath)
+        println("singleFileName->${inputFile.name},path->${inputFile.absolutePath}")
         if (checkClassFile(inputFile)) {
-            AsmUtil.inject(inputFile, dstFile)
+            println("checkClassFile hit->${inputFile.name}")
+//            var clsName = singleClassFile2ClassName(inputFile.absolutePath)
+            var clsName = inputFile.name
+            println("className ->$clsName")
+            AsmUtil.inject(inputFile, dstFile, clsName)
         } else {
             FileUtils.copyFile(inputFile, dstFile)
         }
@@ -208,9 +218,6 @@ class MethodTraceTransform : Transform() {
 
     private fun checkClassFile(inputFile: File): Boolean {
         var fname = inputFile.name
-        if (!fname.endsWith(".class")) {
-            return false
-        }
         if (!fname.endsWith(".class")
             || fname == "R.class"
             || fname.startsWith("R\$")
@@ -219,9 +226,34 @@ class MethodTraceTransform : Transform() {
         ) {
             return false
         }
-//        if (!fname.endsWith("Activity.class")) return false
-        println("ValidClass: ${inputFile.absolutePath}")
         return true
     }
 
+    private fun checkJarEntry(entryName: String?): Boolean {
+        if (TextUtils.isEmpty(entryName)) return false
+        var extraPackages = AsmUtil.extraPackages
+        if (extraPackages.size == 0) return false
+        extraPackages.forEach {
+            if (entryName?.startsWith(it) == true && entryName.endsWith(".class")) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun jarEntry2ClassName(entryName: String): String {
+        var clsName = entryName.replace("/", ".")
+        return clsName
+    }
+
+    private fun singleClassFile2ClassName(filePath: String): String {
+        var TEMPELE_STR = AsmUtil.appPackageName ?: ""
+        var index = filePath.indexOf(TEMPELE_STR)
+        var classPath = filePath
+        if (index != -1) {
+            classPath = filePath.substring(index)
+        }
+        var clsName = classPath.replace("\\", ".")
+        return clsName
+    }
 }

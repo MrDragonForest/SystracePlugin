@@ -1,6 +1,7 @@
 package com.dragon.systrace.plugin.asm
 
 import org.apache.commons.io.FileUtils
+import org.apache.commons.io.IOUtils
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassWriter
 import java.io.*
@@ -11,14 +12,16 @@ import java.io.*
  */
 class AsmUtil {
     companion object {
+        var extraPackages = arrayListOf<String>()
+        var appPackageName: String? = null
+
         /**
          * 使用ASM 向class中的方法插入记录代码
          */
         @JvmStatic
-        fun inject(srcFile: File?, dstFile: File?) {
+        fun inject(srcFile: File?, dstFile: File?, className: String) {
             var fis: FileInputStream? = null
             var fos: FileOutputStream? = null
-            var className = srcFile?.name?.substring(0, srcFile?.name?.indexOf(".") ?: 0)
             try {
                 /*
                 1. 准备待插桩的class
@@ -41,10 +44,10 @@ class AsmUtil {
                 fos = FileOutputStream(dstFile)
                 fos.write(newClassBytes)
                 fos.flush()
-                println("AsmUtil inject success")
+                writeToFile(SUCCESS_FILE, srcFile?.absolutePath)
             } catch (e: Exception) {
                 e.printStackTrace()
-                println("AsmUtil inject fail:" + e.message)
+                writeToFile(FAIL_FILE, srcFile?.absolutePath + "\n" + e.message)
                 FileUtils.copyFile(srcFile, dstFile)
             } finally {
                 try {
@@ -71,12 +74,48 @@ class AsmUtil {
                 /*
                 3.获得新的class字节码并写出
                 */
+                writeToFile(EXTRA_SUCCESS_FILE, className)
                 return cw.toByteArray()
             } catch (e: java.lang.Exception) {
+                writeToFile(EXTRA_FAIL_FILE, className + "\n" + e.message)
                 e.printStackTrace()
-                println("执行字节码插桩失败！" + e.message)
             }
-            return null
+            return IOUtils.toByteArray(inputStream)
+        }
+
+        fun clearRecords() {
+            var dir = File(TRACE_DIR)
+            if (dir.exists()) {
+                FileUtils.forceDelete(dir)
+            }
+        }
+
+        val TRACE_DIR = ".methodtrace"
+        val SUCCESS_FILE = "success_trace.txt"
+        val FAIL_FILE = "fail_trace.txt"
+        val EXTRA_SUCCESS_FILE = "extra_success_trace.txt"
+        val EXTRA_FAIL_FILE = "extra_fail_trace.txt"
+
+        private fun writeToFile(fileName: String, content: String?) {
+            if (!File(TRACE_DIR).exists()) {
+                File(TRACE_DIR).mkdir()
+            }
+            content?.let {
+                var fw: FileWriter? = null
+                var pw: PrintWriter? = null
+                try {
+                    var file = File(TRACE_DIR + File.separator + fileName)
+                    fw = FileWriter(file, true)
+                    pw = PrintWriter(fw)
+                    pw.println(content)
+                    pw.flush()
+                } catch (e: java.lang.Exception) {
+                    e.printStackTrace();
+                } finally {
+                    pw?.close()
+                    fw?.close()
+                }
+            }
         }
     }
 }

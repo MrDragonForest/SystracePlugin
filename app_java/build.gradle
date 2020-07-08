@@ -1,6 +1,19 @@
 apply plugin: 'com.android.application'
 apply plugin: com.dragon.systrace.plugin.SystracePlugin
+methodTraceConfig {
+    appPackageName = "com\\dragonforest\\demo\\app_java"
 
+    extraTracePackages = [
+            "com/google/gson/",
+            "okhttp3/",
+            "retrofit2/",
+            "androidx/appcompat/app/",
+            "androidx/appcompat/view/",
+            "androidx/appcompat/widget/",
+            "androidx/fragment/app/",
+            "okio/"
+    ]
+}
 android {
     compileSdkVersion 29
 
@@ -20,6 +33,11 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
 dependencies {
@@ -30,4 +48,6 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 
+    implementation 'com.squareup.retrofit2:retrofit:2.8.1'
+    implementation 'com.squareup.retrofit2:converter-gson:2.8.1'
 }

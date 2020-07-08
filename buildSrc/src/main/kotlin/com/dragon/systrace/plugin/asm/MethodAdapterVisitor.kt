@@ -2,23 +2,22 @@ package com.dragon.systrace.plugin.asm
 
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.MethodVisitor
-import org.objectweb.asm.Type
 import org.objectweb.asm.commons.AdviceAdapter
-import org.objectweb.asm.commons.Method
 
 /**
  *
  * create by DragonForest at 2020/7/3
  */
-class MethodAdapterVisitor(api: Int,
-                           var methodVisitor: MethodVisitor?,
-                           access: Int,
-                           var methodName: String?,
-                           descriptor: String?,
-                           var clsName: String?) : AdviceAdapter(api, methodVisitor, access, methodName, descriptor) {
+class MethodAdapterVisitor(
+    api: Int,
+    var methodVisitor: MethodVisitor?,
+    access: Int,
+    var methodName: String?,
+    descriptor: String?,
+    var clsName: String?
+) : AdviceAdapter(api, methodVisitor, access, methodName, descriptor) {
 
     override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
-        println("visitAnnotation, descriptor$descriptor")
         return super.visitAnnotation(descriptor, visible)
     }
 
@@ -35,7 +34,13 @@ class MethodAdapterVisitor(api: Int,
 //        super.onMethodEnter()
         if (filterInject(clsName, methodName)) {
             // 插入 Trace.beginSection()
-            methodVisitor?.visitLdcInsn("${clsName}_$methodName")
+            var sectionName = clsName + "_" + methodName
+            if (sectionName.length > 80) {
+                sectionName =
+                    "..." + sectionName.substring(sectionName.length - 80, sectionName.length)
+            }
+            println("sectionName->$sectionName")
+            methodVisitor?.visitLdcInsn(sectionName)
             methodVisitor?.visitMethodInsn(
                 INVOKESTATIC,
                 "android/os/Trace",
@@ -57,7 +62,13 @@ class MethodAdapterVisitor(api: Int,
 //        super.onMethodExit(opcode)
         if (filterInject(clsName, methodName)) {
             // 插入Trace.endSection()
-            methodVisitor?.visitMethodInsn(INVOKESTATIC, "android/os/Trace", "endSection", "()V", false);
+            methodVisitor?.visitMethodInsn(
+                INVOKESTATIC,
+                "android/os/Trace",
+                "endSection",
+                "()V",
+                false
+            );
         }
     }
 

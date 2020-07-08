@@ -2,6 +2,13 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-android-extensions'
 apply plugin: com.dragon.systrace.plugin.SystracePlugin
+methodTraceConfig {
+    extraTracePackages = [
+            "com.example1",
+            "com.emample2",
+            "com.emample3"
+    ]
+}
 
 android {
     compileSdkVersion 29

@@ -20,10 +20,9 @@ plugins {
     id "groovy"
     id "java"
     id "org.jetbrains.kotlin.jvm" //version "1.3.41"
-    id "com.github.dcendents.android-maven"
+    id "maven"
 }
 
-group = "com.github.dragonforest"
 
 repositories {
     google()
@@ -58,4 +57,16 @@ dependencies {
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
     println('使用utf8编译')
+}
+
+/**
+ * 上传到本地Maven
+ */
+uploadArchives {
+    repositories.mavenDeployer {
+        repository(url: uri('E:\\AndroidStudioProjects\\mavenlib\\repo'))
+        pom.groupId = 'com.dragonforest.systrace'
+        pom.artifactId = 'methodtrace-plugin'
+        pom.version = "1.0.0"
+    }
 }
